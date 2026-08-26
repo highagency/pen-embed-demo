@@ -9,7 +9,7 @@ const {
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const EDITOR_URL = "http://localhost:3002/new?embed=true";
+const EDITOR_URL = "http://localhost:3002/new?embed";
 const DOCUMENTS_DIR = path.join(__dirname, "documents");
 const FILE_NAME = "untitled.pen";
 const SIDEBAR_WIDTH = 400;

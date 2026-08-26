@@ -1,40 +1,41 @@
-# pen-embed-demo
+# pen-embed-demo (proposal)
+
+<video src="video.mov" controls muted width="100%">
+  <a href="video.mov">▶ demo video</a>
+</video>
 
 Electron app demonstrating embedding the pen.dev web editor
-(`apps/web-editor`) through its embed bridge, with a pi-agent chat sidebar
+(`https://app.pen.dev/new`) through its embed bridge, with a pi-agent chat sidebar
 that drives the canvas through the bridge's MCP tools.
 
 The main window hosts the chat sidebar (React + assistant-ui +
 [pi-agent-core](https://www.npmjs.com/package/@earendil-works/pi-agent-core))
-and a `WebContentsView` pointed at `http://localhost:3002/new?embed=true`.
+and a `WebContentsView` pointed at `http://localhost:3002/new?embed`.
 The main process speaks the embed API described below; the chat agent picks
 up the canvas tools automatically, streams, supports thinking levels,
 tool-call inspection, history, and bring-your-own API keys (Anthropic,
 OpenAI, Google, Moonshot, OpenRouter, and more) stored in `localStorage`.
+The top bar shows the open `.pen` file and can create a new one or open an
+existing one from disk (assets live in an `assets/` folder next to the
+file); switching files reloads the editor and reconnects the bridge.
 
 ## Run
 
-1. Start the web editor dev server in the `ha` repo:
-
-   ```sh
-   npm --prefix apps/web-editor run dev   # http://localhost:3002
-   ```
-
-2. Start the demo:
+1. Start the demo:
 
    ```sh
    npm install
    npm start
    ```
 
-3. Add an API key in the sidebar's Settings, then ask the agent to design
+2. Add an API key in the sidebar's Settings, then ask the agent to design
    something on the canvas.
 
 `npm run dev` rebuilds the chat bundle on change.
 
-## The pen embed API
+## The `pen.dev` embed API
 
-Loading `/new?embed=true` puts the editor in embed mode: it renders no local
+Loading `/new?embed` puts the editor in embed mode: it renders no local
 document UI and expects the embedding page (the *embedder*) to supply the
 document and talk to it over a `MessagePort`.
 
@@ -194,5 +195,8 @@ normally with `isError: true` and the message in `content`.
 Electron can't `postMessage` into a `WebContentsView` from the outside, so
 the main process sends the connect message over an internal channel and
 `preload-editor.js` re-posts it into the page's main world. `main.js` holds
-the port: it answers the `storage-*` requests from `documents/` and exposes
-`get-mcp-schema` / `mcp-tool-call` to the chat renderer via `ipcMain`.
+the port: it answers the `storage-*` requests from the current `.pen` file
+(`documents/untitled.pen` by default) and exposes `get-mcp-schema` /
+`mcp-tool-call` to the chat renderer via `ipcMain`. Opening or creating a
+file swaps the storage target and reloads the editor page, which re-runs the
+connect handshake and `storage-load`s the new document.
