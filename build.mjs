@@ -7,7 +7,10 @@ const root = dirname(fileURLToPath(import.meta.url));
 const watch = process.argv.includes("--watch");
 
 const context = await esbuild.context({
-  entryPoints: { chat: join(root, "src/chat/main.tsx") },
+  entryPoints: {
+    chat: join(root, "src/chat/main.tsx"),
+    browser: join(root, "src/browser/main.tsx"),
+  },
   bundle: true,
   platform: "browser",
   format: "iife",

@@ -16,8 +16,20 @@ up the canvas tools automatically, streams, supports thinking levels,
 tool-call inspection, history, and bring-your-own API keys (Anthropic,
 OpenAI, Google, Moonshot, OpenRouter, and more) stored in `localStorage`.
 The top bar shows the open `.pen` file and can create a new one or open an
-existing one from disk (assets live in an `assets/` folder next to the
-file); switching files reloads the editor and reconnects the bridge.
+existing one from disk (imported images and fonts land in `images/` and
+`fonts/` next to the file); switching files reloads the editor and reconnects
+the bridge.
+
+## Browser import
+
+The globe button in the sidebar's top bar opens a browser window driven by
+`@pen.dev/sdk/electron` (installed from npm).
+Its strip has a URL bar, a Pick
+button for the in-page crosshair, a CSS selector input that hovers its match
+as you type, a clickable ancestor breadcrumb that hovers on mouseover, and a
+read-out of the picked element's component name and styles. Import (or Enter
+in the page) captures the selection and sends it to the canvas with the
+bridge's `browser-import` request.
 
 ## Run
 
@@ -49,20 +61,25 @@ interface ConnectMessage {
   type: "pen:connect";
   /** Editor color scheme. Default: "dark". */
   theme?: "light" | "dark";
-  /** URI reported as the open document's location. Optional. */
-  fileURI?: string;
+  /** Absolute URI of the open document, e.g. `file:///Users/me/docs/untitled.pen`. */
+  fileURI: string;
 }
 
 const channel = new MessageChannel();
 editorWindow.postMessage(
-  { type: "pen:connect", theme: "dark" } satisfies ConnectMessage,
+  {
+    type: "pen:connect",
+    theme: "dark",
+    fileURI: "file:///Users/me/docs/untitled.pen",
+  } satisfies ConnectMessage,
   "*",
   [channel.port2],
 );
 ```
 
 The page answers `{ kind: "ready" }` on the port once its bridge is
-listening. The bridge only starts with the client bundle, so re-send
+listening, or `{ kind: "error", code: "INVALID_FILE_URI", message }` and
+closes the port when `fileURI` is missing or not absolute. The bridge only starts with the client bundle, so re-send
 `pen:connect` (a fresh channel each attempt) every ~500 ms until `ready`
 arrives; the page always adopts the newest port. `ready` means the bridge is
 up, not that the editor engine has finished booting — tool calls in the
@@ -75,6 +92,7 @@ Every message on the port is one of:
 ```ts
 type BridgeMessage =
   | { kind: "ready" }                                       // editor → embedder, once per port
+  | { kind: "error"; code: string; message: string }        // editor → embedder, rejected connect
   | { kind: "request"; id: string | number; method: string; payload?: unknown }
   | {
       kind: "response";
@@ -119,7 +137,10 @@ enum DocumentSaveResult { Saved = 0, NothingToSave, Cancelled, DiskFull, NotPerm
 
 #### `storage-read-asset` / `storage-write-asset` / `storage-has-asset`
 
-Assets (e.g. images placed on the canvas) are keyed by a relative path.
+Assets (e.g. images placed on the canvas) are keyed by an absolute path,
+resolved next to the connect message's `fileURI` and written without its
+leading slash: `Users/me/docs/images/photo.png` for
+`file:///Users/me/docs/untitled.pen`.
 
 ```ts
 // storage-read-asset
@@ -137,7 +158,7 @@ response: boolean
 
 ### Methods: embedder → editor (MCP tools)
 
-The bridge accepts exactly these two request methods.
+The bridge accepts these three request methods.
 
 #### `get-mcp-schema`
 
@@ -177,13 +198,24 @@ Feed the schemas to an LLM as tool definitions and proxy its tool calls
 through `mcp-tool-call` — that is exactly what this demo's chat sidebar does
 (`src/chat/lib/pen.ts`, `src/chat/lib/session.ts`).
 
+#### `browser-import`
+
+Imports a browser capture (the payload `PenCapturer.capture()` resolves to)
+onto the canvas, like a paste from the Chrome extension.
+
+```ts
+payload:  string  // the serialized capture
+response: { success: boolean }
+```
+
 ### Errors
 
 A failed request resolves as `{ kind: "response", id, error }`:
 
 | `error.code`         | Meaning                                                        |
 | -------------------- | -------------------------------------------------------------- |
-| `METHOD_NOT_ALLOWED` | The method is not one of the two supported requests.           |
+| `METHOD_NOT_ALLOWED` | The method is not one of the three supported requests.         |
+| `INVALID_PAYLOAD`    | `browser-import` was sent with a non-string payload.            |
 | `TOOL_NOT_FOUND`     | `mcp-tool-call` named a tool the canvas does not expose.       |
 | `ERROR`              | Transport-level failure while executing the call.              |
 

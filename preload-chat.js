@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld("demo", {
   onFileChanged: (callback) => {
     ipcRenderer.on("demo:file-changed", (_event, file) => callback(file));
   },
+  openBrowser: () => ipcRenderer.send("demo:open-browser"),
 });

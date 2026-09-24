@@ -13,6 +13,7 @@ import {
   FilePlusIcon,
   FolderIcon,
   GearIcon,
+  GlobeIcon,
   HistoryIcon,
   PlusIcon,
   ToolIcon,
@@ -90,6 +91,14 @@ export function TopBar(props: {
         </button>
         <button className="icon-btn" onClick={() => onNavigate("history")} title="Chats" aria-label="Chats">
           <HistoryIcon />
+        </button>
+        <button
+          className="icon-btn"
+          onClick={() => window.demo.openBrowser()}
+          title="Browser: pick a page element and import it"
+          aria-label="Browser"
+        >
+          <GlobeIcon />
         </button>
         <button className="icon-btn" onClick={() => onNavigate("settings")} title="Settings" aria-label="Settings">
           <GearIcon />

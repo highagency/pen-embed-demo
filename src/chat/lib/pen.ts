@@ -40,6 +40,7 @@ declare global {
       openFile: () => Promise<PenFileInfo | undefined>;
       newFile: () => Promise<PenFileInfo | undefined>;
       onFileChanged: (callback: (file: PenFileInfo) => void) => void;
+      openBrowser: () => void;
     };
   }
 }

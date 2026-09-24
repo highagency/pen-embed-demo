@@ -8,11 +8,15 @@ const {
 } = require("electron");
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
+const { PenCapturer } = require("@pen.dev/sdk/electron");
 
 const EDITOR_URL = "http://localhost:3002/new?embed";
 const DOCUMENTS_DIR = path.join(__dirname, "documents");
 const FILE_NAME = "untitled.pen";
 const SIDEBAR_WIDTH = 400;
+const BROWSER_START_URL = "https://example.com";
+const BROWSER_PANEL_HEIGHT = 128;
 const REQUEST_TIMEOUT_MS = 120_000;
 
 // DocumentSaveResult.Saved in @ha/shared.
@@ -38,6 +42,9 @@ const DEFAULT_CONTENT = JSON.stringify({
 
 let win;
 let view;
+let browserWin;
+let browserPage;
+let capturer;
 let bridgePort;
 let connectTimer;
 let canvasReady = false;
@@ -90,12 +97,11 @@ function bridgeRequest(method, payload) {
   });
 }
 
-// Assets live in an assets/ folder next to the current .pen file.
-function assetPath(relativePath) {
+function assetPath(key) {
   const dir = path.dirname(currentFile);
-  const resolved = path.normalize(path.join(dir, "assets", relativePath));
+  const resolved = path.resolve("/", key);
   if (!resolved.startsWith(dir + path.sep)) {
-    throw new Error(`Invalid asset path: ${relativePath}`);
+    throw new Error(`Asset outside the document folder: ${key}`);
   }
   return resolved;
 }
@@ -235,7 +241,11 @@ function startConnecting() {
     });
     port1.start();
 
-    view.webContents.postMessage("pen-connect", { theme: "dark" }, [port2]);
+    view.webContents.postMessage(
+      "pen-connect",
+      { theme: "dark", fileURI: pathToFileURL(currentFile).href },
+      [port2],
+    );
   };
 
   attempt();
@@ -249,6 +259,87 @@ function layoutView() {
     y: 0,
     width: Math.max(0, width - SIDEBAR_WIDTH),
     height,
+  });
+}
+
+function browserStatus(text) {
+  if (browserWin && !browserWin.isDestroyed()) {
+    browserWin.webContents.send("demo:browser-status", text);
+  }
+}
+
+async function importSelection() {
+  if (!capturer) {
+    return;
+  }
+  if (!canvasReady) {
+    browserStatus("The canvas is not connected yet.");
+    return;
+  }
+  try {
+    const payload = await capturer.capture({
+      onProgress: (fraction) =>
+        browserStatus(`Capturing… ${Math.round(fraction * 100)}%`),
+    });
+    browserStatus("Importing into the canvas…");
+    const { success } = await bridgeRequest("browser-import", payload);
+    browserStatus(
+      success
+        ? "Imported into the canvas."
+        : "The canvas could not import the capture.",
+    );
+  } catch (error) {
+    browserStatus(`Import failed: ${error.message ?? error}`);
+  }
+}
+
+function openBrowserWindow() {
+  if (browserWin && !browserWin.isDestroyed()) {
+    browserWin.focus();
+    return;
+  }
+  browserWin = new BrowserWindow({
+    width: 1000,
+    height: 800,
+    backgroundColor: "#1e1e1e",
+    webPreferences: {
+      preload: path.join(__dirname, "preload-browser.js"),
+    },
+  });
+  const pageView = new WebContentsView();
+  browserPage = pageView;
+  browserWin.contentView.addChildView(pageView);
+  const layoutPage = () => {
+    const { width, height } = browserWin.getContentBounds();
+    pageView.setBounds({
+      x: 0,
+      y: BROWSER_PANEL_HEIGHT,
+      width,
+      height: Math.max(0, height - BROWSER_PANEL_HEIGHT),
+    });
+  };
+  browserWin.on("resize", layoutPage);
+  layoutPage();
+  browserWin.loadFile("browser.html");
+  pageView.webContents.loadURL(BROWSER_START_URL);
+
+  capturer = new PenCapturer(pageView.webContents, { screenshots: true });
+  capturer.on("picker", (state) => {
+    if (browserWin && !browserWin.isDestroyed()) {
+      browserWin.webContents.send("demo:browser-picker", state);
+    }
+  });
+  capturer.on("action", (action) => {
+    if (action === "import") {
+      void importSelection();
+    }
+  });
+
+  browserWin.on("closed", () => {
+    capturer.dispose();
+    capturer = undefined;
+    browserPage = undefined;
+    browserWin = undefined;
   });
 }
 
@@ -326,6 +417,55 @@ ipcMain.handle("demo:mcp-tool-call", (_event, name, args) =>
     arguments: args && typeof args === "object" ? args : {},
   }),
 );
+
+ipcMain.on("demo:open-browser", openBrowserWindow);
+
+ipcMain.on("demo:browser-navigate", (_event, url) => {
+  void capturer?.endPicking();
+  browserPage?.webContents.loadURL(url);
+});
+
+ipcMain.on("demo:browser-pick", () => {
+  if (!capturer) {
+    return;
+  }
+  if (capturer.picker) {
+    void capturer.endPicking();
+  } else {
+    capturer.startPicking();
+  }
+});
+
+ipcMain.handle("demo:browser-select", async (_event, selector) => {
+  const pick = await capturer?.select(String(selector));
+  browserStatus(
+    pick ? `Selected ${pick.element.label}.` : `No match for ${selector}.`,
+  );
+  return pick !== undefined;
+});
+
+ipcMain.on("demo:browser-select-path", (_event, index) => {
+  void capturer?.selectPathEntry(index);
+});
+
+ipcMain.on("demo:browser-hover", (_event, selector) => {
+  void capturer?.hover(selector ?? undefined);
+});
+
+ipcMain.on("demo:browser-hover-path", (_event, index) => {
+  const pick = capturer?.picker?.pick;
+  const selectorOf = pick?.element.selector;
+  const steps = selectorOf && index !== null ? pick.pathIndex - index : -1;
+  let selector;
+  if (steps === 0) {
+    selector = selectorOf;
+  } else if (steps > 0) {
+    selector = `*:has(> ${"* > ".repeat(steps - 1)}${selectorOf})`;
+  }
+  void capturer?.hover(selector);
+});
+
+ipcMain.on("demo:browser-import", () => void importSelection());
 
 app.whenReady().then(createWindow);
 
