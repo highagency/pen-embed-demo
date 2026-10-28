@@ -5,6 +5,7 @@ const {
   ipcMain,
   MessageChannelMain,
   nativeTheme,
+  shell,
   WebContentsView,
 } = require("electron");
 const fs = require("node:fs/promises");
@@ -107,7 +108,7 @@ function assetPath(key) {
   return resolved;
 }
 
-async function handleStorageRequest(method, payload) {
+async function handleEditorRequest(method, payload) {
   const filePath = currentFile;
 
   switch (method) {
@@ -156,6 +157,17 @@ async function handleStorageRequest(method, payload) {
       } catch {
         return false;
       }
+    }
+
+    // Only sent because pen:connect lists "open-link" in capabilities.
+    case "open-link": {
+      const url = new URL(payload.url);
+      if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error(`Not a web link: ${payload.url}`);
+      }
+
+      await shell.openExternal(url.href);
+      return undefined;
     }
 
     default:
@@ -240,7 +252,7 @@ function startConnecting() {
       }
 
       if (message?.kind === "request") {
-        handleStorageRequest(message.method, message.payload).then(
+        handleEditorRequest(message.method, message.payload).then(
           (payload) =>
             port1.postMessage({ kind: "response", id: message.id, payload }),
           (error) =>
@@ -263,6 +275,7 @@ function startConnecting() {
         // tool calls edit the canvas.
         clientName: "Agent",
         cursorColor: [0 / 255, 214 / 255, 143 / 255],
+        capabilities: ["open-link"],
       },
       [port2],
     );
