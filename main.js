@@ -195,11 +195,14 @@ function startConnecting() {
     port1.on("message", (event) => {
       const message = event.data;
 
+      // Any message means the editor adopted this port. Re-sending pen:connect
+      // would restart its document load, and it only sends ready once loaded.
+      if (connectTimer) {
+        clearInterval(connectTimer);
+        connectTimer = undefined;
+      }
+
       if (message?.kind === "ready") {
-        if (connectTimer) {
-          clearInterval(connectTimer);
-          connectTimer = undefined;
-        }
         console.log("[demo] connected to editor");
         setCanvasReady(true);
         bridgeRequest("get-mcp-schema").then(
@@ -211,6 +214,11 @@ function startConnecting() {
             ),
           (error) => console.warn(`[demo] get-mcp-schema failed:`, error),
         );
+        return;
+      }
+
+      if (message?.kind === "error") {
+        console.warn(`[demo] editor rejected connect: ${message.code}: ${message.message}`);
         return;
       }
 
