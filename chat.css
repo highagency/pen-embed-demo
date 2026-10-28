@@ -716,7 +716,8 @@ a {
   outline: none;
   resize: none;
   line-height: 1.5;
-  padding: 3px 0;
+  /* One line is exactly as tall as .composer-send, so the text centers on it */
+  padding: calc((30px - 1.5em) / 2) 0;
   /* react-textarea-autosize owns height/overflow; keep the track invisible */
   scrollbar-width: thin;
 }
