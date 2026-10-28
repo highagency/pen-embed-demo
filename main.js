@@ -256,7 +256,14 @@ function startConnecting() {
 
     view.webContents.postMessage(
       "pen-connect",
-      { theme: editorTheme(), fileURI: pathToFileURL(currentFile).href },
+      {
+        theme: editorTheme(),
+        fileURI: pathToFileURL(currentFile).href,
+        // Label and RGB (0–1) color of the cursor shown while the agent's
+        // tool calls edit the canvas.
+        clientName: "Agent",
+        cursorColor: [0 / 255, 214 / 255, 143 / 255],
+      },
       [port2],
     );
   };
