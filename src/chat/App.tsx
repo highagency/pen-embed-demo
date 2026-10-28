@@ -110,6 +110,7 @@ export function App() {
   const onThemeChange = useCallback(
     (theme: Theme) => {
       applyTheme(theme);
+      window.demo.setTheme(theme);
       const next: Settings = { ...settings, theme };
       setSettings(next);
       void saveSettings(next);

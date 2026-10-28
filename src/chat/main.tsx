@@ -8,7 +8,10 @@ import { applyTheme } from "./lib/theme";
 void Promise.all([
   pen.init(),
   refreshConfiguredProviders(),
-  loadSettings().then((s) => applyTheme(s.theme)),
+  loadSettings().then((s) => {
+    applyTheme(s.theme);
+    window.demo.setTheme(s.theme ?? "dark");
+  }),
 ]).finally(() => {
   createRoot(document.getElementById("root")!).render(<App />);
 });

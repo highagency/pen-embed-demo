@@ -5,6 +5,7 @@
  * list and `mcp-tool-call` for execution.
  */
 import { Emitter } from "./emitter";
+import type { Theme } from "./theme";
 
 export interface PenToolDescriptor {
   name: string;
@@ -29,6 +30,13 @@ export interface PenFileInfo {
   path: string;
 }
 
+/** A node the user has selected on the canvas, as selection-changed reports it. */
+export interface PenSelectedNode {
+  id: string;
+  type: string;
+  name?: string;
+}
+
 declare global {
   interface Window {
     demo: {
@@ -40,7 +48,9 @@ declare global {
       openFile: () => Promise<PenFileInfo | undefined>;
       newFile: () => Promise<PenFileInfo | undefined>;
       onFileChanged: (callback: (file: PenFileInfo) => void) => void;
+      onSelectionChanged: (callback: (selection: { nodes?: PenSelectedNode[] }) => void) => void;
       openBrowser: () => void;
+      setTheme: (theme: Theme) => void;
     };
   }
 }
@@ -51,6 +61,7 @@ class PenCanvasConnection {
   private _ready = false;
   private _tools: PenToolDescriptor[] = [];
   private _file: PenFileInfo | undefined;
+  private _selection: PenSelectedNode[] = [];
 
   get ready(): boolean {
     return this._ready;
@@ -64,6 +75,10 @@ class PenCanvasConnection {
     return this._file;
   }
 
+  get selection(): readonly PenSelectedNode[] {
+    return this._selection;
+  }
+
   async init(): Promise<void> {
     window.demo.onCanvasStatus((ready) => {
       this._ready = ready;
@@ -71,7 +86,12 @@ class PenCanvasConnection {
         void this.refreshTools();
       } else {
         this._tools = [];
+        this._selection = [];
       }
+      this.emitter.emit();
+    });
+    window.demo.onSelectionChanged((selection) => {
+      this._selection = selection?.nodes ?? [];
       this.emitter.emit();
     });
     window.demo.onFileChanged((file) => {
