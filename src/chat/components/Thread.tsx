@@ -127,6 +127,20 @@ function EmptyState({ hasModel, onOpenSettings }: { hasModel: boolean; onOpenSet
   );
 }
 
+function SelectionChip() {
+  const nodes = pen.selection;
+  if (nodes.length === 0) return null;
+
+  const names = nodes.map((n) => n.name ?? n.type);
+  const shown = names.length > 3 ? `${names.slice(0, 3).join(", ")} +${names.length - 3}` : names.join(", ");
+  return (
+    <div className="selection-chip" title={names.join(", ")}>
+      <span className="selection-chip-count">{nodes.length} selected</span>
+      <span className="selection-chip-names">{shown}</span>
+    </div>
+  );
+}
+
 export function Thread({ session, onOpenSettings }: { session: ChatSession | null; onOpenSettings: () => void }) {
   const hasModel = session !== null || listAvailableModels().length > 0;
 
@@ -141,6 +155,7 @@ export function Thread({ session, onOpenSettings }: { session: ChatSession | nul
       </ThreadPrimitive.Viewport>
 
       <div className="composer-wrap">
+        <SelectionChip />
         <ComposerPrimitive.Root className="composer">
           <ComposerPrimitive.Input
             className="composer-input"

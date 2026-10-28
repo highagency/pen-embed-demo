@@ -70,6 +70,25 @@ function makePenTool(descriptor: PenToolDescriptor, taken: Set<string>): AgentTo
   };
 }
 
+const MAX_PROMPT_SELECTION = 50;
+
+function describeSelection(): string {
+  const nodes = pen.selection;
+  if (nodes.length === 0) return "Nothing is selected on the canvas.";
+
+  const lines = nodes
+    .slice(0, MAX_PROMPT_SELECTION)
+    .map((n) => `- ${n.id} (${n.type}${n.name != null ? `, "${n.name}"` : ""})`);
+  if (nodes.length > MAX_PROMPT_SELECTION) {
+    lines.push(`- …and ${nodes.length - MAX_PROMPT_SELECTION} more`);
+  }
+
+  return [
+    `The user has ${nodes.length} node(s) selected on the canvas. When they say "this", "these" or "the selection", they mean:`,
+    ...lines,
+  ].join("\n");
+}
+
 function buildSystemPrompt(): string {
   const toolCount = pen.tools.length;
   const lines = [
@@ -82,6 +101,8 @@ function buildSystemPrompt(): string {
     toolCount > 0
       ? `The canvas exposes ${toolCount} MCP tool(s) for reading and editing the design. These are the only way to act on the canvas — prefer them over describing what the user should do.`
       : "The canvas has not published its tools yet.",
+    "",
+    describeSelection(),
     "",
     "Guidelines:",
     "- Be concise. The sidebar is narrow; prefer short paragraphs and tight lists.",

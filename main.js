@@ -220,6 +220,13 @@ function connect() {
       return;
     }
 
+    if (message?.kind === "notification" && message.method === "selection-changed") {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send("demo:selection-changed", message.payload);
+      }
+      return;
+    }
+
     if (message?.kind === "response") {
       const entry = pendingRequests.get(message.id);
       if (!entry) {
