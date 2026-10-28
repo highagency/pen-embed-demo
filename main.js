@@ -48,7 +48,6 @@ let browserWin;
 let browserPage;
 let capturer;
 let bridgePort;
-let connectTimer;
 let canvasReady = false;
 let requestCounter = 0;
 const pendingRequests = new Map();
@@ -179,11 +178,7 @@ function editorTheme() {
   return nativeTheme.shouldUseDarkColors ? "dark" : "light";
 }
 
-function stopConnecting() {
-  if (connectTimer) {
-    clearInterval(connectTimer);
-    connectTimer = undefined;
-  }
+function disconnect() {
   if (bridgePort) {
     bridgePort.close();
     bridgePort = undefined;
@@ -192,97 +187,84 @@ function stopConnecting() {
   setCanvasReady(false);
 }
 
-// The editor page only starts listening once its client bundle is up, so keep
-// re-sending pen:connect (a fresh channel each attempt) until it acks with
-// { kind: "ready" }.
-function startConnecting() {
-  stopConnecting();
+// Hands the editor a fresh channel with pen:connect. Runs when the page has
+// loaded and again on every pen:ready, which the bridge posts each time it
+// starts listening. The bridge adopts the newest port, so an extra connect is
+// harmless.
+function connect() {
+  disconnect();
 
-  const attempt = () => {
-    bridgePort?.close();
+  const { port1, port2 } = new MessageChannelMain();
+  bridgePort = port1;
 
-    const { port1, port2 } = new MessageChannelMain();
-    bridgePort = port1;
+  port1.on("message", (event) => {
+    const message = event.data;
 
-    port1.on("message", (event) => {
-      const message = event.data;
+    if (message?.kind === "ready") {
+      console.log("[demo] connected to editor");
+      setCanvasReady(true);
+      bridgeRequest("get-mcp-schema").then(
+        (schema) =>
+          console.log(
+            `[demo] canvas tools: ${(schema?.tools ?? [])
+              .map((tool) => tool.name)
+              .join(", ")}`,
+          ),
+        (error) => console.warn(`[demo] get-mcp-schema failed:`, error),
+      );
+      return;
+    }
 
-      // Any message means the editor adopted this port. Re-sending pen:connect
-      // would restart its document load, and it only sends ready once loaded.
-      if (connectTimer) {
-        clearInterval(connectTimer);
-        connectTimer = undefined;
+    if (message?.kind === "error") {
+      console.warn(`[demo] editor rejected connect: ${message.code}: ${message.message}`);
+      return;
+    }
+
+    if (message?.kind === "response") {
+      const entry = pendingRequests.get(message.id);
+      if (!entry) {
+        return;
       }
-
-      if (message?.kind === "ready") {
-        console.log("[demo] connected to editor");
-        setCanvasReady(true);
-        bridgeRequest("get-mcp-schema").then(
-          (schema) =>
-            console.log(
-              `[demo] canvas tools: ${(schema?.tools ?? [])
-                .map((tool) => tool.name)
-                .join(", ")}`,
-            ),
-          (error) => console.warn(`[demo] get-mcp-schema failed:`, error),
+      pendingRequests.delete(message.id);
+      clearTimeout(entry.timer);
+      if (message.error) {
+        entry.reject(
+          new Error(`${message.error.code}: ${message.error.message}`),
         );
-        return;
+      } else {
+        entry.resolve(message.payload);
       }
+      return;
+    }
 
-      if (message?.kind === "error") {
-        console.warn(`[demo] editor rejected connect: ${message.code}: ${message.message}`);
-        return;
-      }
+    if (message?.kind === "request") {
+      handleEditorRequest(message.method, message.payload).then(
+        (payload) =>
+          port1.postMessage({ kind: "response", id: message.id, payload }),
+        (error) =>
+          port1.postMessage({
+            kind: "response",
+            id: message.id,
+            error: { code: "ERROR", message: String(error.message ?? error) },
+          }),
+      );
+    }
+  });
+  port1.start();
 
-      if (message?.kind === "response") {
-        const entry = pendingRequests.get(message.id);
-        if (!entry) {
-          return;
-        }
-        pendingRequests.delete(message.id);
-        clearTimeout(entry.timer);
-        if (message.error) {
-          entry.reject(
-            new Error(`${message.error.code}: ${message.error.message}`),
-          );
-        } else {
-          entry.resolve(message.payload);
-        }
-        return;
-      }
-
-      if (message?.kind === "request") {
-        handleEditorRequest(message.method, message.payload).then(
-          (payload) =>
-            port1.postMessage({ kind: "response", id: message.id, payload }),
-          (error) =>
-            port1.postMessage({
-              kind: "response",
-              id: message.id,
-              error: { code: "ERROR", message: String(error.message ?? error) },
-            }),
-        );
-      }
-    });
-    port1.start();
-
-    view.webContents.postMessage(
-      "pen-connect",
-      {
-        theme: editorTheme(),
-        fileURI: pathToFileURL(currentFile).href,
-        // Label and RGB (0–1) color of the cursor shown while the agent's
-        // tool calls edit the canvas.
-        clientName: "Agent",
-        cursorColor: [0 / 255, 214 / 255, 143 / 255],
-        capabilities: ["open-link"],
-      },
-      [port2],
-    );
-  };
-
-  attempt();
-  connectTimer = setInterval(attempt, 500);
+  view.webContents.postMessage(
+    "pen-connect",
+    {
+      theme: editorTheme(),
+      fileURI: pathToFileURL(currentFile).href,
+      // Label and RGB (0–1) color of the cursor shown while the agent's
+      // tool calls edit the canvas.
+      clientName: "Agent",
+      cursorColor: [0 / 255, 214 / 255, 143 / 255],
+      capabilities: ["open-link"],
+    },
+    [port2],
+  );
 }
 
 function layoutView() {
@@ -405,8 +387,8 @@ async function createWindow() {
 }
 
 function loadEditor() {
-  stopConnecting();
-  view.webContents.once("did-finish-load", () => startConnecting());
+  disconnect();
+  view.webContents.once("did-finish-load", () => connect());
   view.webContents.loadURL(EDITOR_URL);
 }
 
@@ -423,6 +405,8 @@ nativeTheme.on("updated", () => {
 ipcMain.on("demo:set-theme", (_event, theme) => {
   nativeTheme.themeSource = theme;
 });
+
+ipcMain.on("demo:editor-bridge-ready", () => connect());
 
 ipcMain.handle("demo:canvas-ready", () => canvasReady);
 
