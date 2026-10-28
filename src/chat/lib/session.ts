@@ -107,6 +107,7 @@ function buildSystemPrompt(): string {
     "Guidelines:",
     "- Be concise. The sidebar is narrow; prefer short paragraphs and tight lists.",
     "- Read the canvas state before editing when you are unsure what is there.",
+    "- Call get_app_state before your first `execute` call: it documents the API `execute` code can use (read_skill has the full guide). Never guess function names.",
     "- After acting, briefly confirm what changed.",
     "- If a tool fails, report the error plainly and suggest the next step.",
   ];
