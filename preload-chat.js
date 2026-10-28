@@ -14,4 +14,5 @@ contextBridge.exposeInMainWorld("demo", {
     ipcRenderer.on("demo:file-changed", (_event, file) => callback(file));
   },
   openBrowser: () => ipcRenderer.send("demo:open-browser"),
+  setTheme: (theme) => ipcRenderer.send("demo:set-theme", theme),
 });

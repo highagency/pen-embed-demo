@@ -5,6 +5,7 @@
  * list and `mcp-tool-call` for execution.
  */
 import { Emitter } from "./emitter";
+import type { Theme } from "./theme";
 
 export interface PenToolDescriptor {
   name: string;
@@ -41,6 +42,7 @@ declare global {
       newFile: () => Promise<PenFileInfo | undefined>;
       onFileChanged: (callback: (file: PenFileInfo) => void) => void;
       openBrowser: () => void;
+      setTheme: (theme: Theme) => void;
     };
   }
 }

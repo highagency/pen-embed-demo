@@ -4,6 +4,7 @@ const {
   dialog,
   ipcMain,
   MessageChannelMain,
+  nativeTheme,
   WebContentsView,
 } = require("electron");
 const fs = require("node:fs/promises");
@@ -162,6 +163,10 @@ async function handleStorageRequest(method, payload) {
   }
 }
 
+function editorTheme() {
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
+}
+
 function stopConnecting() {
   if (connectTimer) {
     clearInterval(connectTimer);
@@ -243,7 +248,7 @@ function startConnecting() {
 
     view.webContents.postMessage(
       "pen-connect",
-      { theme: "dark", fileURI: pathToFileURL(currentFile).href },
+      { theme: editorTheme(), fileURI: pathToFileURL(currentFile).href },
       [port2],
     );
   };
@@ -376,6 +381,20 @@ function loadEditor() {
   view.webContents.once("did-finish-load", () => startConnecting());
   view.webContents.loadURL(EDITOR_URL);
 }
+
+nativeTheme.themeSource = "dark";
+
+nativeTheme.on("updated", () => {
+  bridgePort?.postMessage({
+    kind: "notification",
+    method: "color-theme-changed",
+    payload: { theme: editorTheme() },
+  });
+});
+
+ipcMain.on("demo:set-theme", (_event, theme) => {
+  nativeTheme.themeSource = theme;
+});
 
 ipcMain.handle("demo:canvas-ready", () => canvasReady);
 
